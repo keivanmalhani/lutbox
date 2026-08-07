@@ -308,6 +308,10 @@ function render(): void {
   } else {
     stage.resetLabels();
   }
+  // The stack has to reach the renderer before the draw, and this is the one
+  // place every state change funnels through. The stage skips the work when
+  // nothing about the stack actually moved.
+  stage.setSlots(store.slots());
   stage.render(mode, state.split);
 }
 
@@ -344,20 +348,23 @@ function exportOutput(kind: 'png' | 'jpeg' | 'card'): void {
     toast('Nothing to export', 'Load an image first.', 'error');
     return;
   }
-  if (!stage.renderer) {
+
+  // Whichever renderer is live, this is the full frame graded with no split.
+  // On the CPU path it is a fresh full resolution canvas rather than the
+  // reduced one on screen, so it takes a moment on a large image.
+  const source = stage.exportCanvas();
+  if (!source) {
     toast(
       'Nothing to export',
-      'The preview needs WebGL2, and this browser did not provide it.',
+      'This browser gave us neither WebGL2 nor a 2D canvas, so there are no pixels to write.',
       'error',
     );
     return;
   }
 
-  // Draw the full frame graded, with no split, then take the pixels.
-  stage.render('graded', 0);
   const type = kind === 'png' ? 'image/png' : 'image/jpeg';
   const extension = kind === 'png' ? '.png' : '.jpg';
-  stage.canvasElement.toBlob(
+  source.toBlob(
     (blob) => {
       if (!blob) {
         toast('Export failed', 'The browser would not turn the canvas into a file.', 'error');
@@ -510,10 +517,18 @@ function start(): void {
   const first = PRESETS[0];
   addLut(buildPreset(first), first.label, 'preset');
 
-  if (!ready) {
+  if (!ready && stage.usingCpu) {
     toast(
-      'No WebGL2',
-      'The live preview is off. The analysis, the parser and the generator still work.',
+      'Running on the CPU',
+      'This browser has no WebGL2, so the LUT is being applied in JavaScript. ' +
+        'Same result, much slower, and the preview is drawn at a reduced size. ' +
+        'Exports stay at full resolution.',
+    );
+  } else if (!ready) {
+    toast(
+      'No preview',
+      'This browser gave us neither WebGL2 nor a 2D canvas. The analysis, the ' +
+        'parser and the generator still work.',
       'error',
     );
   }

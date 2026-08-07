@@ -3,8 +3,11 @@
  * half you are looking at.
  */
 
-import { Renderer, GlError } from '../gl';
+import { Renderer, GlError, MAX_SLOTS } from '../gl';
 import type { RenderMode } from '../gl';
+import { CpuRenderer } from '../cpu';
+import type { Slot } from '../analyze';
+import type { CubeLut } from '../cube';
 import { el, clear } from './dom';
 import type { ImageSource } from './state';
 
@@ -21,8 +24,12 @@ export class Stage {
   private labelRight: HTMLElement;
   private notice: HTMLElement;
   private dragging = false;
+  /** Which table is currently in each GPU slot, so uploads can be skipped. */
+  private uploaded: Array<CubeLut | null> = [];
 
   renderer: Renderer | null = null;
+  /** Set when WebGL2 is missing and the LUT is being applied in JavaScript. */
+  cpu: CpuRenderer | null = null;
   /** Set when WebGL2 is missing or the renderer refused to start. */
   glFailure: string | null = null;
 
@@ -74,7 +81,7 @@ export class Stage {
   /** Called after the stage changes size, so the caller can redraw. */
   onResize: () => void = () => undefined;
 
-  /** Start GL. Returns false when the browser cannot do it. */
+  /** Start GL, or the CPU fallback. Returns false when GL was unavailable. */
   init(): boolean {
     try {
       this.renderer = new Renderer(this.canvas);
@@ -84,37 +91,124 @@ export class Stage {
         error instanceof GlError
           ? error.message
           : 'The graphics context failed to start: ' + String(error);
-      this.showNoWebgl();
+      this.startCpu();
       return false;
     }
   }
 
-  private showNoWebgl(): void {
+  /**
+   * Move the preview onto the CPU.
+   *
+   * The canvas is replaced rather than reused because a canvas only ever has
+   * one context for its lifetime. If the Renderer got a WebGL2 context and
+   * then failed later, at shader compilation say, that context is bound to the
+   * element for good and asking it for a 2D one returns null.
+   */
+  private startCpu(): void {
+    const replacement = el('canvas', { class: 'stage-canvas', width: 16, height: 9 });
+    this.canvas.replaceWith(replacement);
+    this.canvas = replacement;
+    try {
+      this.cpu = new CpuRenderer(replacement);
+    } catch {
+      this.cpu = null;
+      this.showNoPreview();
+      return;
+    }
+    this.showCpuNotice();
+  }
+
+  private showCpuNotice(): void {
+    clear(this.notice);
+    this.notice.classList.remove('is-error');
+    this.notice.append(
+      el('p', { class: 'notice-title', text: 'Running on the CPU' }),
+      el('p', {
+        text:
+          'This browser did not give us WebGL2, so the LUT is being applied in ' +
+          'JavaScript rather than on the GPU. It is the same trilinear lookup ' +
+          'and the same result, but it is much slower, so the preview is drawn ' +
+          'at a reduced size and takes a moment to catch up after a change.',
+      }),
+      el('p', {
+        class: 'notice-dim',
+        text:
+          'Exports are still written at the full resolution of your image. ' +
+          'WebGL2 is available in current Chrome, Firefox, Edge and Safari 15 ' +
+          'and later, and is sometimes switched off in browser settings or by a ' +
+          'driver blocklist.',
+      }),
+    );
+  }
+
+  /** Last resort: no GPU and no 2D canvas either. */
+  private showNoPreview(): void {
     this.frame.classList.add('is-blank');
     clear(this.notice);
     this.notice.classList.add('is-error');
     this.notice.append(
-      el('p', { class: 'notice-title', text: 'No WebGL2 in this browser' }),
+      el('p', { class: 'notice-title', text: 'No preview in this browser' }),
       el('p', { text: this.glFailure ?? '' }),
       el('p', {
         class: 'notice-dim',
         text:
           'The parser, the curve plot, the histogram and the LUT generator all ' +
-          'still work. Only the live preview needs the GPU. WebGL2 is available ' +
-          'in current Chrome, Firefox, Edge and Safari 15 and later, and is ' +
-          'sometimes switched off in browser settings or by a driver blocklist.',
+          'still work. Only the picture needs a canvas.',
       }),
     );
+  }
+
+  /** True when the LUT is being applied in JavaScript rather than on the GPU. */
+  get usingCpu(): boolean {
+    return this.cpu !== null;
   }
 
   setImage(image: ImageSource | null): void {
     this.image = image;
     if (!image) return;
-    this.frame.classList.remove('is-blank');
     if (this.renderer) {
+      this.frame.classList.remove('is-blank');
       this.renderer.setImage(image.canvas, image.width, image.height);
+    } else if (this.cpu) {
+      try {
+        this.cpu.setImage(image.canvas, image.width, image.height);
+        this.frame.classList.remove('is-blank');
+      } catch {
+        // Reducing the frame needs a second canvas, and a machine short enough
+        // of memory to refuse one should be told rather than shown a blank.
+        this.cpu = null;
+        this.showNoPreview();
+      }
     }
+    // With no renderer at all the frame stays hidden. Un-hiding it would put
+    // an empty canvas on screen, which is where the black rectangle that this
+    // fallback exists to remove used to come from.
     this.layout();
+  }
+
+  /**
+   * Hand the stack to whichever renderer is live.
+   *
+   * The GPU path only re-uploads a table when the table itself changed. A 33
+   * point LUT is a 287 kB texture upload and the strength slider fires on
+   * every pixel of a drag, where all that has to change is one uniform.
+   */
+  setSlots(slots: readonly Slot[]): void {
+    if (this.cpu) {
+      this.cpu.setSlots(slots);
+      return;
+    }
+    if (!this.renderer) return;
+    for (let i = 0; i < MAX_SLOTS; i++) {
+      const slot = i < slots.length ? slots[i] : null;
+      const lut = slot ? slot.lut : null;
+      if (this.uploaded[i] !== lut) {
+        this.renderer.setSlot(i, slot);
+        this.uploaded[i] = lut;
+      } else if (slot) {
+        this.renderer.setStrength(i, slot.strength);
+      }
+    }
   }
 
   /**
@@ -201,8 +295,9 @@ export class Stage {
   }
 
   render(mode: RenderMode, split: number): void {
-    if (!this.renderer || !this.image) return;
-    this.renderer.render(mode, split);
+    if (!this.image) return;
+    if (this.renderer) this.renderer.render(mode, split);
+    else if (this.cpu) this.cpu.render(mode, split);
   }
 
   setDropActive(active: boolean): void {
@@ -221,9 +316,20 @@ export class Stage {
     this.notice.classList.remove('is-error');
   }
 
-  /** Pixels for export, straight off the canvas. */
-  get canvasElement(): HTMLCanvasElement {
-    return this.canvas;
+  /**
+   * A canvas holding the fully graded frame, for export.
+   *
+   * The GPU path redraws its own canvas with no split and hands it over. The
+   * CPU path builds a separate one at the image's real size, because the
+   * canvas on screen is the reduced preview and an export should not quietly
+   * be smaller than the file that went in.
+   */
+  exportCanvas(): HTMLCanvasElement | null {
+    if (this.renderer) {
+      this.renderer.render('graded', 0);
+      return this.canvas;
+    }
+    return this.cpu ? this.cpu.fullGradedCanvas() : null;
   }
 
   private attachHandle(): void {

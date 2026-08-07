@@ -16,6 +16,8 @@ the image rather than leaving you to guess.
   file it cannot read is rejected with the line number that is wrong.
 - Applies the LUT in a WebGL2 fragment shader using a real 3D texture with
   trilinear interpolation.
+- Falls back to grading on the CPU where WebGL2 is missing, at a reduced
+  preview size and with the page saying so. Same lookup, same answer, slower.
 - Split view with a draggable handle, a side by side view, and an A/B flip on a
   held key.
 - Stacks up to four LUTs, reorderable, each with a strength from 0 to 100
@@ -32,9 +34,11 @@ the image rather than leaving you to guess.
 
 Your image never leaves the tab. There is no upload, because there is no
 server. The site is a folder of static files on GitHub Pages: an HTML file, a
-stylesheet and one JavaScript bundle. Once those have loaded, the page makes no
-network requests at all. It reads your files with the browser's File API,
-decodes them in the tab, and hands the pixels to your GPU.
+stylesheet, one JavaScript bundle, and `og.png`, which is the picture a chat
+app shows when somebody pastes the link and which the page itself never asks
+for. Once the first three have loaded, the page makes no network requests at
+all. It reads your files with the browser's File API, decodes them in the tab,
+and hands the pixels to your GPU.
 
 This matters because the alternative is uploading a client's unreleased work to
 somebody else's machine to find out whether a LUT suits it.
@@ -89,7 +93,12 @@ for.
 
 The same maths is written a second time in plain TypeScript in `src/analyze.ts`,
 because the curve plots and the histograms need it on the CPU, and because it
-can then be tested against hand-computed values without a GPU.
+can then be tested against hand-computed values without a GPU. It is also what
+runs the preview where there is no WebGL2, and what draws the link preview
+card. `tests/cpu.test.ts` writes out the shader's texel-centre mapping and the
+texture unit's filtering rule longhand and checks the two agree on every
+lattice point of a table and at a set of points between them, which is the only
+way to hold the two implementations together without a GPU in the test runner.
 
 ## What it will not do
 
@@ -116,22 +125,36 @@ can then be tested against hand-computed values without a GPU.
 ```
 npm ci
 npm run dev      # local server
-npm test         # 213 tests
+npm test         # 253 tests
 npm run build    # static files into dist/
 ```
 
 There are no runtime dependencies. The three development dependencies are
 TypeScript, Vite and Vitest.
 
+The link preview image is not built with the site, because rendering it needs a
+native canvas and that is a binary every clone would otherwise download to
+produce one file that changes about once a year:
+
+```
+npm install --no-save @napi-rs/canvas
+node scripts/render-og.mjs      # writes public/og.png at 1200x630
+```
+
+It draws the sample frame twice, ungraded and with one of the bundled presets
+applied, through the same lookup the page uses.
+
 ## Layout
 
 ```
 src/cube.ts       .cube parser and writer
 src/gl.ts         WebGL2 renderer, 3D texture upload, split and A/B modes
+src/cpu.ts        the canvas2d fallback for browsers with no WebGL2
 src/analyze.ts    CPU reference lookup, curves, histogram, measurements, summary
 src/generate.ts   LUT builder and the three bundled presets
 src/sample.ts     the sample frame, drawn in code
 src/ui/           DOM, charts as inline SVG, stage, panel, files, toasts
+scripts/          the link preview card, rendered offline
 tests/            parser, interpolation, analysis, blending, round trips
 ```
 
