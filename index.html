@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="dark" />
+    <title>lutbox - preview .cube LUTs in the browser</title>
+    <meta
+      name="description"
+      content="Apply a .cube LUT to your own image at full resolution in the browser, with a real 3D texture and trilinear interpolation. Nothing is uploaded."
+    />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230a0a0b'/%3E%3Cpath d='M6 22 L16 6 L26 22 Z' fill='none' stroke='%23d18e46' stroke-width='2'/%3E%3C/svg%3E"
+    />
+  </head>
+  <body>
+    <div id="app"></div>
+    <noscript>
+      <p style="padding: 24px; font-family: sans-serif; color: #e7e7ea">
+        lutbox does all of its work in the browser, so it needs JavaScript. There is no
+        server-rendered version, because there is no server.
+      </p>
+    </noscript>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
