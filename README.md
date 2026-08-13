@@ -3,6 +3,8 @@
 [![CI](https://github.com/keivanmalhani/lutbox/actions/workflows/ci.yml/badge.svg)](https://github.com/keivanmalhani/lutbox/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
+English | [Espanol](README.es.md)
+
 Live at <https://keivanmalhani.github.io/lutbox/>
 
 Drop a photo and a `.cube` LUT onto the page. The grade is applied at full
