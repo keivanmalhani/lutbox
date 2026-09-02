@@ -783,3 +783,45 @@ body {
     scroll-behavior: auto !important;
   }
 }
+
+/* ---- touch targets --------------------------------------------------
+   Every control gets a 44px hit box on a touch screen. Buttons, fields
+   and sliders grow a real box. A checkbox is 13px on every platform and
+   cannot be resized without breaking how it draws, so the label around
+   it carries the target instead. Links in the chrome grow their padding
+   box, which hit testing follows and line layout ignores, so no text
+   moves; links inside running prose are left alone, because stacking
+   padding on them would overlap the hit boxes of the lines above.
+   -------------------------------------------------------------------- */
+@media (pointer: coarse) {
+  button,
+  [role="button"],
+  summary,
+  select,
+  input[type="button"],
+  input[type="submit"],
+  input[type="text"],
+  input[type="search"],
+  input[type="number"],
+  input[type="email"],
+  input[type="file"],
+  input[type="range"] {
+    min-height: 44px;
+  }
+
+  label:has(> input[type="checkbox"]),
+  label:has(> input[type="radio"]) {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+  }
+
+  nav a,
+  header a,
+  footer a,
+  .toolbar a,
+  .controls a {
+    padding-block: 12px;
+    margin-block: -12px;
+  }
+}
