@@ -785,13 +785,23 @@ body {
 }
 
 /* ---- touch targets --------------------------------------------------
-   Every control gets a 44px hit box on a touch screen. Buttons, fields
-   and sliders grow a real box. A checkbox is 13px on every platform and
-   cannot be resized without breaking how it draws, so the label around
-   it carries the target instead. Links in the chrome grow their padding
-   box, which hit testing follows and line layout ignores, so no text
-   moves; links inside running prose are left alone, because stacking
-   padding on them would overlap the hit boxes of the lines above.
+   Every control gets a 44px hit box on a touch screen.
+
+   Buttons, fields and sliders grow a real box in both directions: a
+   26px-wide icon button is as hard to hit as a 26px-tall one. A
+   checkbox is 13px on every platform and cannot be resized without
+   breaking how it draws, so the label around it carries the target, and
+   a file input hidden behind its own label is left alone.
+
+   Links that read as buttons or as rows in a list become inline-flex
+   with a 44px minimum, which grows the row rather than overlapping the
+   row above it. Links in the page chrome grow their padding box
+   instead, which hit testing follows and line layout ignores, so no
+   text moves. Links inside running prose are left alone: stacking
+   padding on those would put their hit boxes on top of each other.
+
+   All of it is inside @media (pointer: coarse), so a mouse sees none of
+   it and the desktop layout is unchanged.
    -------------------------------------------------------------------- */
 @media (pointer: coarse) {
   button,
@@ -804,9 +814,9 @@ body {
   input[type="search"],
   input[type="number"],
   input[type="email"],
-  input[type="file"],
   input[type="range"] {
     min-height: 44px;
+    min-width: 44px;
   }
 
   label:has(> input[type="checkbox"]),
@@ -816,12 +826,29 @@ body {
     align-items: center;
   }
 
+  a.btn,
+  a.button,
+  a.skip-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+
   nav a,
   header a,
   footer a,
   .toolbar a,
   .controls a {
-    padding-block: 12px;
-    margin-block: -12px;
+    padding-block: 15px;
+    margin-block: -15px;
+  }
+}
+
+@media (pointer: coarse) {
+  /* The file inputs are hidden behind their own labels, which already
+     carry the target. Sizing them would drag a 1px box into view. */
+  input.visually-hidden {
+    min-height: 0;
+    min-width: 0;
   }
 }
